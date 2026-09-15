@@ -174,6 +174,7 @@ export async function buildTitleIndex(
   let records = 0;
   let ratedRecords = 0;
   let recentUnratedRecords = 0;
+  let unknownYearUnratedRecords = 0;
   let lineNumber = 0;
 
   const flushRecords = async () => {
@@ -209,7 +210,7 @@ export async function buildTitleIndex(
       const id = parseId(tconst, lineNumber);
       const rating = ratingFor(ratingsIndex, id);
       const startYear = nullableNumber(startYearValue);
-      if (rating.rating === null && (startYear === null || startYear < cutoffYear)) {
+      if (rating.rating === null && startYear !== null && startYear < cutoffYear) {
         continue;
       }
 
@@ -245,8 +246,9 @@ export async function buildTitleIndex(
       pendingBytes += record.byteLength;
       recordsByteLength += record.byteLength;
       records += 1;
-      if (rating.rating === null) recentUnratedRecords += 1;
-      else ratedRecords += 1;
+      if (rating.rating !== null) ratedRecords += 1;
+      else if (startYear === null) unknownYearUnratedRecords += 1;
+      else recentUnratedRecords += 1;
       if (pendingBytes >= 1024 * 1024) await flushRecords();
     }
 
@@ -281,6 +283,7 @@ export async function buildTitleIndex(
     records,
     ratedRecords,
     recentUnratedRecords,
+    unknownYearUnratedRecords,
     cutoffYear,
     excludesTitleType: "tvEpisode",
     slotCount,

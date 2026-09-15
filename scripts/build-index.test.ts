@@ -37,7 +37,7 @@ describe("buildIndex", () => {
 });
 
 describe("buildIndexes", () => {
-  it("includes top-level rated and recent unrated titles only", async () => {
+  it("includes rated, recent unrated, and unknown-year top-level titles", async () => {
     const directory = await mkdtemp(join(tmpdir(), "imdbflare-"));
     const ratingsPath = join(directory, "ratings.tsv.gz");
     const basicsPath = join(directory, "basics.tsv.gz");
@@ -54,6 +54,7 @@ describe("buildIndexes", () => {
       "tt0000002\ttvEpisode\tRated Episode\tRated Episode\t0\t2026\t\\N\t40\tDrama",
       "tt0000003\tmovie\tOld Unrated\tOld Unrated\t0\t2022\t\\N\t100\tComedy",
       "tt0000004\ttvSeries\tRecent Unrated\tOriginal Name\t0\t2023\t\\N\t\\N\tComedy,Drama",
+      "tt0000005\tmovie\tUnknown Year\tUnknown Year\t0\t\\N\t\\N\t95\tMystery",
       "",
     ].join("\n")));
 
@@ -68,9 +69,10 @@ describe("buildIndexes", () => {
     const view = new DataView(titles.buffer, titles.byteOffset, titles.byteLength);
 
     expect(metadata.titles).toMatchObject({
-      records: 2,
+      records: 3,
       ratedRecords: 1,
       recentUnratedRecords: 1,
+      unknownYearUnratedRecords: 1,
       cutoffYear: 2023,
     });
 
