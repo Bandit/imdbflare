@@ -1,12 +1,34 @@
-import { createReadStream } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, open, rm, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 import { createGunzip } from "node:zlib";
 
+import {
+  encodeTitleRecord,
+  TITLE_DATA_OFFSET,
+  TITLE_HEADER_BYTES,
+  TITLE_SLOT_BYTES,
+  TITLE_SLOT_COUNT,
+  titleSlot,
+  type TitleRecord,
+} from "../src/title-format";
+
 const RECORD_BYTES = 5;
-const EXPECTED_HEADER = "tconst\taverageRating\tnumVotes";
+const EXPECTED_RATINGS_HEADER = "tconst\taverageRating\tnumVotes";
+const EXPECTED_BASICS_HEADER = [
+  "tconst",
+  "titleType",
+  "primaryTitle",
+  "originalTitle",
+  "isAdult",
+  "startYear",
+  "endYear",
+  "runtimeMinutes",
+  "genres",
+].join("\t");
 
 interface ScanResult {
   maxId: number;
@@ -37,7 +59,7 @@ async function scanDump(inputPath: string): Promise<ScanResult> {
   for await (const line of await lines(inputPath)) {
     lineNumber += 1;
     if (lineNumber === 1) {
-      if (line !== EXPECTED_HEADER) {
+      if (line !== EXPECTED_RATINGS_HEADER) {
         throw new Error(`Unexpected ratings header: ${line}`);
       }
       continue;
@@ -52,7 +74,7 @@ async function scanDump(inputPath: string): Promise<ScanResult> {
   return { maxId, records };
 }
 
-export async function buildIndex(inputPath: string, outputPath: string) {
+async function createRatingsIndex(inputPath: string) {
   const { maxId, records } = await scanDump(inputPath);
   const index = new Uint8Array((maxId + 1) * RECORD_BYTES);
   const view = new DataView(index.buffer);
@@ -84,12 +106,6 @@ export async function buildIndex(inputPath: string, outputPath: string) {
     throw new Error(`Expected ${records} records, wrote ${written}`);
   }
 
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, index);
-
-  const metadataPath = outputPath.endsWith(".bin")
-    ? `${outputPath.slice(0, -4)}.meta.json`
-    : `${outputPath}.meta.json`;
   const metadata = {
     generatedAt: new Date().toISOString(),
     source: "https://datasets.imdbws.com/title.ratings.tsv.gz",
@@ -98,14 +114,208 @@ export async function buildIndex(inputPath: string, outputPath: string) {
     recordBytes: RECORD_BYTES,
     byteLength: index.byteLength,
   };
+
+  return { index, metadata };
+}
+
+async function writeMetadata(outputPath: string, metadata: object) {
+  const metadataPath = outputPath.endsWith(".bin")
+    ? `${outputPath.slice(0, -4)}.meta.json`
+    : `${outputPath}.meta.json`;
   await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
+}
+
+export async function buildIndex(inputPath: string, outputPath: string) {
+  const { index, metadata } = await createRatingsIndex(inputPath);
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, index);
+  await writeMetadata(outputPath, metadata);
 
   return metadata;
 }
 
+function nullableNumber(value: string): number | null {
+  return value === "\\N" ? null : Number(value);
+}
+
+function ratingFor(index: Uint8Array, id: number) {
+  const offset = id * RECORD_BYTES;
+  if (offset + RECORD_BYTES > index.byteLength || index[offset] === 0) {
+    return { rating: null, votes: null };
+  }
+
+  return {
+    rating: index[offset] / 10,
+    votes: new DataView(index.buffer).getUint32(offset + 1, true),
+  };
+}
+
+export async function buildTitleIndex(
+  basicsPath: string,
+  outputPath: string,
+  ratingsIndex: Uint8Array,
+  currentYear = new Date().getUTCFullYear(),
+  slotCount = TITLE_SLOT_COUNT,
+) {
+  if (slotCount < 2 || (slotCount & (slotCount - 1)) !== 0) {
+    throw new Error("Title slot count must be a power of two");
+  }
+
+  const cutoffYear = currentYear - 3;
+  const dataOffset = TITLE_HEADER_BYTES + slotCount * TITLE_SLOT_BYTES;
+  const table = new Uint8Array(slotCount * TITLE_SLOT_BYTES);
+  const tableView = new DataView(table.buffer);
+  const temporaryPath = `${outputPath}.records.tmp`;
+  await mkdir(dirname(outputPath), { recursive: true });
+  const recordsFile = await open(temporaryPath, "w");
+  let pendingRecords: Uint8Array[] = [];
+  let pendingBytes = 0;
+  let recordsByteLength = 0;
+  let records = 0;
+  let ratedRecords = 0;
+  let recentUnratedRecords = 0;
+  let lineNumber = 0;
+
+  const flushRecords = async () => {
+    if (pendingBytes === 0) return;
+    await recordsFile.write(Buffer.concat(pendingRecords, pendingBytes));
+    pendingRecords = [];
+    pendingBytes = 0;
+  };
+
+  try {
+    for await (const line of await lines(basicsPath)) {
+      lineNumber += 1;
+      if (lineNumber === 1) {
+        if (line !== EXPECTED_BASICS_HEADER) {
+          throw new Error(`Unexpected basics header: ${line}`);
+        }
+        continue;
+      }
+
+      const [
+        tconst,
+        titleType,
+        primaryTitle,
+        originalTitle,
+        isAdult,
+        startYearValue,
+        endYearValue,
+        runtimeValue,
+        genresValue,
+      ] = line.split("\t");
+      if (titleType === "tvEpisode") continue;
+
+      const id = parseId(tconst, lineNumber);
+      const rating = ratingFor(ratingsIndex, id);
+      const startYear = nullableNumber(startYearValue);
+      if (rating.rating === null && (startYear === null || startYear < cutoffYear)) {
+        continue;
+      }
+
+      if (records + 1 > slotCount * 0.7) {
+        throw new Error(`Title hash table is over 70% full at ${records + 1} records`);
+      }
+
+      const record = encodeTitleRecord({
+        title: primaryTitle,
+        originalTitle,
+        type: titleType as TitleRecord["type"],
+        genres: genresValue === "\\N" ? [] : genresValue.split(","),
+        startYear,
+        endYear: nullableNumber(endYearValue),
+        runtimeMinutes: nullableNumber(runtimeValue),
+        adult: isAdult === "1",
+        ...rating,
+      });
+      if (record.byteLength > 0xffff) {
+        throw new Error(`Title record is too large on line ${lineNumber}`);
+      }
+
+      let slot = titleSlot(id, slotCount);
+      while (tableView.getUint32(slot * TITLE_SLOT_BYTES, true) !== 0) {
+        slot = (slot + 1) & (slotCount - 1);
+      }
+      const slotOffset = slot * TITLE_SLOT_BYTES;
+      tableView.setUint32(slotOffset, id, true);
+      tableView.setUint32(slotOffset + 4, recordsByteLength, true);
+      tableView.setUint16(slotOffset + 8, record.byteLength, true);
+
+      pendingRecords.push(record);
+      pendingBytes += record.byteLength;
+      recordsByteLength += record.byteLength;
+      records += 1;
+      if (rating.rating === null) recentUnratedRecords += 1;
+      else ratedRecords += 1;
+      if (pendingBytes >= 1024 * 1024) await flushRecords();
+    }
+
+    await flushRecords();
+  } finally {
+    await recordsFile.close();
+  }
+
+  const header = new Uint8Array(TITLE_HEADER_BYTES);
+  header.set(new TextEncoder().encode("IMDBTL01"));
+  const headerView = new DataView(header.buffer);
+  headerView.setUint16(8, 1, true);
+  headerView.setUint16(10, TITLE_SLOT_BYTES, true);
+  headerView.setUint32(12, slotCount, true);
+  headerView.setUint32(16, records, true);
+  headerView.setUint16(20, cutoffYear, true);
+  headerView.setUint32(24, dataOffset, true);
+
+  const outputFile = await open(outputPath, "w");
+  await outputFile.write(header);
+  await outputFile.write(table);
+  await outputFile.close();
+  await pipeline(
+    createReadStream(temporaryPath),
+    createWriteStream(outputPath, { flags: "a" }),
+  );
+  await rm(temporaryPath);
+
+  const metadata = {
+    generatedAt: new Date().toISOString(),
+    source: "https://datasets.imdbws.com/title.basics.tsv.gz",
+    records,
+    ratedRecords,
+    recentUnratedRecords,
+    cutoffYear,
+    excludesTitleType: "tvEpisode",
+    slotCount,
+    byteLength: dataOffset + recordsByteLength,
+  };
+  await writeMetadata(outputPath, metadata);
+  return metadata;
+}
+
+export async function buildIndexes(
+  ratingsPath: string,
+  basicsPath: string,
+  outputDirectory: string,
+  currentYear = new Date().getUTCFullYear(),
+  titleSlotCount = TITLE_SLOT_COUNT,
+) {
+  await mkdir(outputDirectory, { recursive: true });
+  const { index, metadata: ratings } = await createRatingsIndex(ratingsPath);
+  const ratingsOutput = join(outputDirectory, "ratings.bin");
+  await writeFile(ratingsOutput, index);
+  await writeMetadata(ratingsOutput, ratings);
+  const titles = await buildTitleIndex(
+    basicsPath,
+    join(outputDirectory, "titles.bin"),
+    index,
+    currentYear,
+    titleSlotCount,
+  );
+  return { ratings, titles };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const inputPath = resolve(process.argv[2] ?? "data/title.ratings.tsv.gz");
-  const outputPath = resolve(process.argv[3] ?? "dist/ratings.bin");
-  const metadata = await buildIndex(inputPath, outputPath);
+  const ratingsPath = resolve(process.argv[2] ?? "data/title.ratings.tsv.gz");
+  const basicsPath = resolve(process.argv[3] ?? "data/title.basics.tsv.gz");
+  const outputDirectory = resolve(process.argv[4] ?? "dist");
+  const metadata = await buildIndexes(ratingsPath, basicsPath, outputDirectory);
   console.log(JSON.stringify(metadata));
 }

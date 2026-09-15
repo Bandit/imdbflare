@@ -1,6 +1,17 @@
+import {
+  decodeTitleRecord,
+  TITLE_DATA_OFFSET,
+  TITLE_HEADER_BYTES,
+  TITLE_PROBE_SLOTS,
+  TITLE_SLOT_BYTES,
+  TITLE_SLOT_COUNT,
+  titleSlot,
+} from "./title-format";
+
 const RECORD_BYTES = 5;
 const MISSING_RATING = 0;
 const TITLE_PATH = /^\/title\/(tt(\d{7,10}))\/?$/;
+const DETAILS_PATH = /^\/title\/(tt(\d{7,10}))\/details\/?$/;
 
 export interface Env {
   RATINGS: R2Bucket;
@@ -23,6 +34,50 @@ function json(body: unknown, status = 200, headers: HeadersInit = {}): Response 
   });
 }
 
+async function getTitleDetails(bucket: R2Bucket, id: number) {
+  let slot = titleSlot(id);
+  let probes = 0;
+
+  while (probes < TITLE_SLOT_COUNT) {
+    const slotsToRead = Math.min(TITLE_PROBE_SLOTS, TITLE_SLOT_COUNT - slot);
+    const indexObject = await bucket.get("titles.bin", {
+      range: {
+        offset: TITLE_HEADER_BYTES + slot * TITLE_SLOT_BYTES,
+        length: slotsToRead * TITLE_SLOT_BYTES,
+      },
+    });
+    if (!indexObject) return null;
+
+    const index = await indexObject.arrayBuffer();
+    if (index.byteLength !== slotsToRead * TITLE_SLOT_BYTES) return null;
+    const view = new DataView(index);
+    for (let indexSlot = 0; indexSlot < slotsToRead; indexSlot += 1) {
+      const offset = indexSlot * TITLE_SLOT_BYTES;
+      const storedId = view.getUint32(offset, true);
+      if (storedId === 0) return null;
+      if (storedId !== id) continue;
+
+      const recordOffset = view.getUint32(offset + 4, true);
+      const recordLength = view.getUint16(offset + 8, true);
+      const recordObject = await bucket.get("titles.bin", {
+        range: {
+          offset: TITLE_DATA_OFFSET + recordOffset,
+          length: recordLength,
+        },
+      });
+      if (!recordObject) return null;
+      const record = await recordObject.arrayBuffer();
+      if (record.byteLength !== recordLength) return null;
+      return decodeTitleRecord(record);
+    }
+
+    probes += slotsToRead;
+    slot = (slot + slotsToRead) & (TITLE_SLOT_COUNT - 1);
+  }
+
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -33,7 +88,17 @@ export default {
       return json({ error: "Method not allowed" }, 405, { Allow: "GET, OPTIONS" });
     }
 
-    const match = new URL(request.url).pathname.match(TITLE_PATH);
+    const pathname = new URL(request.url).pathname;
+    const detailsMatch = pathname.match(DETAILS_PATH);
+    if (detailsMatch) {
+      const [, id, numericId] = detailsMatch;
+      const details = await getTitleDetails(env.RATINGS, Number(numericId));
+      return details
+        ? json({ id, ...details })
+        : json({ error: "Title details not found" }, 404);
+    }
+
+    const match = pathname.match(TITLE_PATH);
     if (!match) {
       return json({ error: "Not found" }, 404);
     }

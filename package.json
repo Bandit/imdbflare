@@ -9,8 +9,8 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "test": "vitest run",
-    "upload:index": "wrangler r2 object put imdb-ratings/ratings.bin --file dist/ratings.bin --content-type application/octet-stream --remote && wrangler r2 object put imdb-ratings/ratings.meta.json --file dist/ratings.meta.json --content-type application/json --remote",
-    "upload:index:local": "wrangler r2 object put imdb-ratings/ratings.bin --file dist/ratings.bin --content-type application/octet-stream --local && wrangler r2 object put imdb-ratings/ratings.meta.json --file dist/ratings.meta.json --content-type application/json --local"
+    "upload:index": "wrangler r2 object put imdb-ratings/ratings.bin --file dist/ratings.bin --content-type application/octet-stream --remote && wrangler r2 object put imdb-ratings/ratings.meta.json --file dist/ratings.meta.json --content-type application/json --remote && wrangler r2 object put imdb-ratings/titles.bin --file dist/titles.bin --content-type application/octet-stream --remote && wrangler r2 object put imdb-ratings/titles.meta.json --file dist/titles.meta.json --content-type application/json --remote",
+    "upload:index:local": "wrangler r2 object put imdb-ratings/ratings.bin --file dist/ratings.bin --content-type application/octet-stream --local && wrangler r2 object put imdb-ratings/ratings.meta.json --file dist/ratings.meta.json --content-type application/json --local && wrangler r2 object put imdb-ratings/titles.bin --file dist/titles.bin --content-type application/octet-stream --local && wrangler r2 object put imdb-ratings/titles.meta.json --file dist/titles.meta.json --content-type application/json --local"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260915.1",

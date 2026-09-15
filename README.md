@@ -1,8 +1,8 @@
 # imdbflare
 
 A small Cloudflare Worker API that returns IMDb ratings from the official bulk
-dataset. Rating data is stored as a fixed-width binary index in R2, so each
-request needs one five-byte range read.
+dataset. Rating data is stored as a fixed-width binary index in R2, while a
+separate sparse index provides compact top-level title details.
 
 ## API
 
@@ -21,6 +21,33 @@ GET /title/tt0000001
 Unknown or invalid IDs return `404`. The API is public and sends permissive
 CORS headers.
 
+### Title details
+
+```http
+GET /title/tt33332385/details
+```
+
+```json
+{
+	"id": "tt33332385",
+	"title": "Widow's Bay",
+	"originalTitle": "Widow's Bay",
+	"type": "tvSeries",
+	"genres": ["Comedy", "Drama", "Horror"],
+	"startYear": 2026,
+	"endYear": null,
+	"runtimeMinutes": 40,
+	"adult": false,
+	"rating": 8.1,
+	"votes": 76498
+}
+```
+
+Details include top-level titles only; `tvEpisode` records are intentionally
+excluded. Rated top-level titles are retained regardless of age. Unrated titles
+are included when their `startYear` is within the current build year or the
+previous three years. Unrated records return `null` for `rating` and `votes`.
+
 ## How it works
 
 Each numeric IMDb title ID maps to a five-byte record in `ratings.bin`:
@@ -28,9 +55,11 @@ Each numeric IMDb title ID maps to a five-byte record in `ratings.bin`:
 - byte 0: rating multiplied by 10; zero means no rating
 - bytes 1-4: unsigned 32-bit vote count in little-endian order
 
-The Worker converts the numeric part of the requested ID to an offset and
-fetches only that record from R2. The current supplied dump creates an index of
-about 229 MB. `title.basics.tsv.gz` is not needed for this endpoint.
+The Worker converts the numeric part of a rating request to an offset and
+fetches only that five-byte record from R2. Details use a sparse hash table in
+`titles.bin`: one small range read finds the record and a second reads its packed
+metadata. The weekly build creates both indexes from `title.ratings.tsv.gz` and
+`title.basics.tsv.gz`.
 
 ## Local setup
 
@@ -45,7 +74,7 @@ npm run upload:index:local
 npm run dev
 ```
 
-The builder reads `data/title.ratings.tsv.gz` by default. With the local Worker
+The builder reads both IMDb dumps in `data/` by default. With the local Worker
 running, query it at the URL printed by Wrangler:
 
 ```bash
@@ -78,9 +107,8 @@ secrets before running it:
 - `CLOUDFLARE_API_TOKEN`, with permission to write objects to the
 	`imdb-ratings` R2 bucket
 
-The workflow downloads only `title.ratings.tsv.gz`, builds the complete index,
-then replaces the R2 objects. R2 object replacement is atomic, so requests see
-either the old or new complete index.
+The workflow downloads both required dumps, builds both indexes in one command,
+then replaces the R2 objects. Each R2 object replacement is atomic.
 
 ## Data terms
 

@@ -1,4 +1,4 @@
-name: Update IMDb ratings
+name: Update IMDb data
 
 on:
   schedule:
@@ -26,14 +26,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Download latest IMDb ratings
+      - name: Download latest IMDb data
         run: |
           mkdir -p data
           curl --fail --location --retry 3 \
             --output data/title.ratings.tsv.gz \
             https://datasets.imdbws.com/title.ratings.tsv.gz
+          curl --fail --location --retry 3 \
+            --output data/title.basics.tsv.gz \
+            https://datasets.imdbws.com/title.basics.tsv.gz
 
-      - name: Build and upload index
+      - name: Build and upload indexes
         run: |
           npm run build:index
           npm run upload:index
