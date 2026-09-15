@@ -4,6 +4,8 @@ A small Cloudflare Worker API that returns IMDb ratings from the official bulk
 dataset. Rating data is stored as a fixed-width binary index in R2, while a
 separate sparse index provides compact top-level title details.
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Bandit/imdbflare)
+
 ## API
 
 ```http
@@ -81,7 +83,28 @@ running, query it at the URL printed by Wrangler:
 curl http://localhost:8787/title/tt0000001
 ```
 
-## Deploy
+## Deploy to Cloudflare
+
+Use the button above to create your own deployment. Cloudflare will copy this
+repository into your GitHub account, provision the Worker and R2 bucket from
+`wrangler.jsonc`, and deploy the Worker. Keep the default `imdb-ratings` bucket
+name because the upload scripts use it.
+
+The new R2 bucket starts empty, so the API will return `404` until its first data
+import completes. In the copied GitHub repository:
+
+1. Add `CLOUDFLARE_ACCOUNT_ID` under **Settings > Secrets and variables >
+	Actions > Repository secrets**.
+2. Create a Cloudflare API token with write access to the `imdb-ratings` R2
+	bucket and add it as `CLOUDFLARE_API_TOKEN` in the same place.
+3. Open **Actions > Update IMDb data**, select **Run workflow**, and wait for the
+	build and upload to finish.
+
+The workflow will then refresh the data automatically every Sunday. Cloudflare
+Workers Builds handles future Worker deployments when changes are pushed to the
+copied repository.
+
+### Manual deployment
 
 Authenticate Wrangler, create the R2 bucket once, upload the initial index,
 and deploy the Worker:
