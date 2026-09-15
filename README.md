@@ -47,8 +47,8 @@ GET /title/tt33332385/details
 Details include non-adult, top-level titles only; `tvEpisode` records and titles
 marked `isAdult` are intentionally excluded. Rated top-level titles are retained
 regardless of age. Unrated titles are included when their `startYear` is unknown
-or within the current build year or the previous three years. Unrated records
-return `null` for `rating` and `votes`.
+or is the current build year minus three or later, including future years.
+Unrated records return `null` for `rating` and `votes`.
 
 ## How it works
 
