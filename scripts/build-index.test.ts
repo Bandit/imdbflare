@@ -55,6 +55,7 @@ describe("buildIndexes", () => {
       "tt0000003\tmovie\tOld Unrated\tOld Unrated\t0\t2022\t\\N\t100\tComedy",
       "tt0000004\ttvSeries\tRecent Unrated\tOriginal Name\t0\t2023\t\\N\t\\N\tComedy,Drama",
       "tt0000005\tmovie\tUnknown Year\tUnknown Year\t0\t\\N\t\\N\t95\tMystery",
+      "tt0000006\tmovie\tAdult Title\tAdult Title\t1\t2026\t\\N\t80\tAdult",
       "",
     ].join("\n")));
 
@@ -73,6 +74,7 @@ describe("buildIndexes", () => {
       ratedRecords: 1,
       recentUnratedRecords: 1,
       unknownYearUnratedRecords: 1,
+      excludedAdultRecords: 1,
       cutoffYear: 2023,
     });
 

@@ -56,7 +56,6 @@ describe("rating API", () => {
       startYear: 2026,
       endYear: null,
       runtimeMinutes: 40,
-      adult: false,
       rating: 8.1,
       votes: 76498,
     });
@@ -87,7 +86,6 @@ describe("rating API", () => {
       startYear: 2026,
       endYear: null,
       runtimeMinutes: 40,
-      adult: false,
       rating: 8.1,
       votes: 76498,
     });

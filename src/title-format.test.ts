@@ -12,7 +12,6 @@ describe("title binary format", () => {
       startYear: 2026,
       endYear: null,
       runtimeMinutes: 40,
-      adult: false,
       rating: 8.1,
       votes: 76498,
     });
@@ -25,7 +24,6 @@ describe("title binary format", () => {
       startYear: 2026,
       endYear: null,
       runtimeMinutes: 40,
-      adult: false,
       rating: 8.1,
       votes: 76498,
     });
@@ -40,7 +38,6 @@ describe("title binary format", () => {
       startYear: 2027,
       endYear: null,
       runtimeMinutes: null,
-      adult: false,
       rating: null,
       votes: null,
     });

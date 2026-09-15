@@ -175,6 +175,7 @@ export async function buildTitleIndex(
   let ratedRecords = 0;
   let recentUnratedRecords = 0;
   let unknownYearUnratedRecords = 0;
+  let excludedAdultRecords = 0;
   let lineNumber = 0;
 
   const flushRecords = async () => {
@@ -206,6 +207,10 @@ export async function buildTitleIndex(
         genresValue,
       ] = line.split("\t");
       if (titleType === "tvEpisode") continue;
+      if (isAdult === "1") {
+        excludedAdultRecords += 1;
+        continue;
+      }
 
       const id = parseId(tconst, lineNumber);
       const rating = ratingFor(ratingsIndex, id);
@@ -226,7 +231,6 @@ export async function buildTitleIndex(
         startYear,
         endYear: nullableNumber(endYearValue),
         runtimeMinutes: nullableNumber(runtimeValue),
-        adult: isAdult === "1",
         ...rating,
       });
       if (record.byteLength > 0xffff) {
@@ -284,6 +288,7 @@ export async function buildTitleIndex(
     ratedRecords,
     recentUnratedRecords,
     unknownYearUnratedRecords,
+    excludedAdultRecords,
     cutoffYear,
     excludesTitleType: "tvEpisode",
     slotCount,

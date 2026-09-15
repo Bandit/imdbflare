@@ -5,7 +5,6 @@ export const TITLE_DATA_OFFSET = TITLE_HEADER_BYTES + TITLE_SLOT_BYTES * TITLE_S
 export const TITLE_PROBE_SLOTS = 16;
 
 const TITLE_RECORD_HEADER_BYTES = 23;
-const ADULT_FLAG = 1;
 
 export const TITLE_TYPES = [
   "movie",
@@ -59,7 +58,6 @@ export interface TitleRecord {
   startYear: number | null;
   endYear: number | null;
   runtimeMinutes: number | null;
-  adult: boolean;
   rating: number | null;
   votes: number | null;
 }
@@ -94,7 +92,6 @@ export function encodeTitleRecord(record: TitleRecord): Uint8Array {
   view.setUint8(0, record.rating === null ? 0 : Math.round(record.rating * 10));
   view.setUint32(1, record.votes ?? 0, true);
   view.setUint8(5, type);
-  view.setUint8(6, record.adult ? ADULT_FLAG : 0);
   view.setUint16(7, record.startYear ?? 0, true);
   view.setUint16(9, record.endYear ?? 0, true);
   view.setUint32(11, record.runtimeMinutes ?? 0, true);
@@ -142,7 +139,6 @@ export function decodeTitleRecord(bytes: ArrayBufferLike): TitleRecord {
     startYear: view.getUint16(7, true) || null,
     endYear: view.getUint16(9, true) || null,
     runtimeMinutes: view.getUint32(11, true) || null,
-    adult: (view.getUint8(6) & ADULT_FLAG) !== 0,
     rating: rating === 0 ? null : rating / 10,
     votes: rating === 0 ? null : view.getUint32(1, true),
   };
