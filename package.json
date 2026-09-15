@@ -1,0 +1,23 @@
+{
+  "name": "imdbflare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:index": "tsx scripts/build-index.ts",
+    "check": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "upload:index": "wrangler r2 object put imdb-ratings/ratings.bin --file dist/ratings.bin --content-type application/octet-stream --remote && wrangler r2 object put imdb-ratings/ratings.meta.json --file dist/ratings.meta.json --content-type application/json --remote",
+    "upload:index:local": "wrangler r2 object put imdb-ratings/ratings.bin --file dist/ratings.bin --content-type application/octet-stream --local && wrangler r2 object put imdb-ratings/ratings.meta.json --file dist/ratings.meta.json --content-type application/json --local"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.131.2"
+  }
+}

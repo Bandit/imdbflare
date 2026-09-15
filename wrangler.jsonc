@@ -1,0 +1,15 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "imdbflare",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-15",
+	"r2_buckets": [
+		{
+			"binding": "RATINGS",
+			"bucket_name": "imdb-ratings"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

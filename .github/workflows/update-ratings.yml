@@ -1,0 +1,42 @@
+name: Update IMDb ratings
+
+on:
+  schedule:
+    - cron: "17 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-imdb-ratings
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download latest IMDb ratings
+        run: |
+          mkdir -p data
+          curl --fail --location --retry 3 \
+            --output data/title.ratings.tsv.gz \
+            https://datasets.imdbws.com/title.ratings.tsv.gz
+
+      - name: Build and upload index
+        run: |
+          npm run build:index
+          npm run upload:index
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
