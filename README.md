@@ -60,7 +60,7 @@ Each numeric IMDb title ID maps to a five-byte record in `ratings.bin`:
 The Worker converts the numeric part of a rating request to an offset and
 fetches only that five-byte record from R2. Details use a sparse hash table in
 `titles.bin`: one small range read finds the record and a second reads its packed
-metadata. The weekly build creates both indexes from `title.ratings.tsv.gz` and
+metadata. The daily build creates both indexes from `title.ratings.tsv.gz` and
 `title.basics.tsv.gz`.
 
 ## Local setup
@@ -100,9 +100,9 @@ import completes. In the copied GitHub repository:
 3. Open **Actions > Update IMDb data**, select **Run workflow**, and wait for the
 	build and upload to finish.
 
-The workflow will then refresh the data automatically every Sunday. Cloudflare
-Workers Builds handles future Worker deployments when changes are pushed to the
-copied repository.
+The workflow will then refresh the data automatically every day at 16:17 UTC.
+Cloudflare Workers Builds handles future Worker deployments when changes are
+pushed to the copied repository.
 
 ### Manual deployment
 
@@ -120,11 +120,11 @@ npm run deploy
 To use a custom domain, configure a Worker route or custom domain in the
 Cloudflare dashboard after deployment.
 
-## Weekly updates
+## Daily updates
 
 [`.github/workflows/update-ratings.yml`](.github/workflows/update-ratings.yml)
-runs every Sunday and can also be started manually. Add these repository
-secrets before running it:
+runs every day at 16:17 UTC and can also be started manually. Add these
+repository secrets before running it:
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`, with permission to write objects to the
